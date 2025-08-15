@@ -1,0 +1,7 @@
+{
+  "name": "Bandhan Mitra",
+  "description": "An AI relationship coach that combines ancient Indian wisdom from Vedas, Puranas, and teachings of Rishis with modern emotional intelligence to provide empathetic, culturally-rooted relationship guidance.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
