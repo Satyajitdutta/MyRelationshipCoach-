@@ -81,7 +81,22 @@ The most important thing is to be a kind, understanding friend. Make the user fe
         config: { systemInstruction, responseMimeType: "application/json", responseSchema: schema },
     });
 
-    const parsedResponse = JSON.parse(response.text.trim());
+    let jsonText = response.text?.trim() || '';
+    
+    // The model might still wrap the JSON in markdown backticks.
+    // This regex will extract the JSON content from a markdown code block.
+    const jsonMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch && jsonMatch[1]) {
+        jsonText = jsonMatch[1];
+    }
+
+    // After potentially stripping markdown, check if the string is empty.
+    if (!jsonText) {
+      console.error("Received empty or invalid JSON string from the AI model.");
+      throw new Error("The AI model returned an empty response, which could not be processed.");
+    }
+
+    const parsedResponse = JSON.parse(jsonText);
 
     return new Response(JSON.stringify(parsedResponse), {
       status: 200,
@@ -98,7 +113,8 @@ The most important thing is to be a kind, understanding friend. Make the user fe
         });
     }
     
-    return new Response(JSON.stringify({ error: 'An internal server error occurred.' }), {
+    const errorMessage = error instanceof Error ? error.message : 'An internal server error occurred.';
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
