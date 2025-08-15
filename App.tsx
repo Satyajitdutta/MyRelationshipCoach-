@@ -3,7 +3,6 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { ChatMessage } from './types';
 import { Rasa } from './types';
 import { RASA_DETAILS, TRANSLATIONS, SUPPORTED_LANGUAGES } from './constants';
-import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 
 // --- NEW VIBRANT ICONS ---
 const SendIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>;
@@ -14,13 +13,6 @@ const LifebuoyIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} x
 const CloseIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>;
 const MoreVertIcon = (props: React.SVGProps<SVGSVGElement>) => <svg {...props} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>;
 
-
-// --- API SETUP ---
-const API_KEY = process.env.API_KEY;
-let ai: GoogleGenAI | undefined;
-if (API_KEY) {
-  ai = new GoogleGenAI({ apiKey: API_KEY });
-}
 
 // --- APP COMPONENT ---
 const App: React.FC = () => {
@@ -127,30 +119,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
   const t = useMemo(() => TRANSLATIONS[language as keyof typeof TRANSLATIONS] || TRANSLATIONS.en, [language]);
   const currentLanguage = useMemo(() => SUPPORTED_LANGUAGES.find(lang => lang.code === language) || SUPPORTED_LANGUAGES[0], [language]);
 
-  if (!API_KEY) {
-    return (
-      <div className="bg-[#FFF8F0] text-[#4A2E2A] h-[100dvh] flex flex-col items-center justify-center p-4 text-center" style={{ backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3e%3cg fill-rule='evenodd'%3e%3cg id='hexagons' fill='%230d9488' fill-opacity='0.08' fill-rule='nonzero'%3e%3cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.99-7.5L26 15v18.5l-13 7.5L0 33.5V15z'/%3e%3c/g%3e%3c/g%3e%3c/svg%3e\")" }}>
-        <div className="max-w-lg w-full bg-white/80 backdrop-blur-sm p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-200">
-          <h1 className="text-2xl font-bold text-red-600 font-serif">{t.errorApiKeyTitle}</h1>
-          <div className="text-left space-y-4 mt-4">
-             <p className="text-gray-800">
-              <CodeHighlight text={t.errorApiKeyMessage1} />
-            </p>
-            <p className="text-sm text-gray-600">
-              <CodeHighlight text={t.errorApiKeyMessage2} />
-            </p>
-            <p className="text-sm font-mono bg-gray-100 p-3 rounded border border-gray-200 text-center">
-              {t.errorApiKeyMessage3}
-            </p>
-            <p className="text-sm text-gray-600">
-              <CodeHighlight text={t.errorApiKeyMessage4} />
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
   const getWelcomeMessage = (): ChatMessage => ({ id: 'welcome-1', text: t.welcome, sender: 'ai', rasa: Rasa.Shanta });
   
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -166,7 +134,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
   const recognitionRef = useRef<any>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -195,24 +162,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-  
-  // Setup audio player events
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const onEnded = () => setCurrentlySpeaking(null);
-    const onError = () => {
-        setError(t.ttsError);
-        setCurrentlySpeaking(null);
-    };
-    audio.addEventListener('ended', onEnded);
-    audio.addEventListener('error', onError);
-    return () => {
-        audio.removeEventListener('ended', onEnded);
-        audio.removeEventListener('error', onError);
-    };
-  }, [t.ttsError]);
-
 
   // Setup Speech Recognition
   useEffect(() => {
@@ -249,21 +198,20 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
   };
   
   const handleSpeak = async (msg: ChatMessage) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
     if (currentlySpeaking === msg.id) {
-        audio.pause();
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+        }
         setCurrentlySpeaking(null);
         return;
     }
 
-    audio.pause();
-    setCurrentlySpeaking(msg.id);
+    setCurrentlySpeaking(msg.id); // Set loading/speaking state immediately
     setError(null);
 
     try {
-        const res = await fetch('/api/speech', {
+        const response = await fetch('/api/speech', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -272,26 +220,29 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
             }),
         });
 
-        if (!res.ok) {
-            throw new Error(`API request failed with status ${res.status}`);
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error('TTS API Error:', errorData.error);
+            // Check if the error is due to a missing API key on the backend
+            if (errorData.error === 'Server configuration error.') {
+                 throw new Error(t.errorApiKey);
+            }
+            throw new Error(`Server error: ${response.status} ${response.statusText}`);
         }
 
-        const { audioContent } = await res.json();
-        if (!audioContent) {
-            throw new Error('No audio content received from API.');
+        const data = await response.json();
+
+        if (data.audioContent && audioRef.current) {
+            const audioSrc = `data:audio/mp3;base64,${data.audioContent}`;
+            audioRef.current.src = audioSrc;
+            await audioRef.current.play();
+        } else {
+            throw new Error('No audio content received from server.');
         }
-
-        audio.src = `data:audio/mp3;base64,${audioContent}`;
-        audio.play().catch(e => {
-            console.error("Audio playback error:", e);
-            setError(t.ttsError);
-            setCurrentlySpeaking(null);
-        });
-
-    } catch (error) {
-        console.error('Failed to get or play audio:', error);
-        setError(t.ttsError);
-        setCurrentlySpeaking(null);
+    } catch (err) {
+        console.error("Failed to play audio:", err);
+        setError((err as Error).message || t.ttsError);
+        setCurrentlySpeaking(null); // Reset speaking state on error
     }
   };
 
@@ -299,7 +250,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
   const handleSend = async (e?: React.FormEvent, text: string = input) => {
     e?.preventDefault();
     if (text.trim() === '' || isLoading) return;
-    if (!ai) { setError(t.errorApiKey); return; }
 
     const userMessage: ChatMessage = { id: `user-${Date.now()}`, text: text, sender: 'user' };
     const updatedMessages = [...messages, userMessage];
@@ -309,62 +259,42 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
     setError(null);
     
     try {
-      const schema = {
-        type: Type.OBJECT,
-        properties: { rasa: { type: Type.STRING, enum: Object.values(Rasa).filter(r => r !== Rasa.None) }, response: { type: Type.STRING } },
-        required: ['rasa', 'response'],
-      };
       const conversationHistory = updatedMessages.map(m => `${m.sender}: ${m.text}`).join('\n');
-      const prompt = `Based on the following conversation history, analyze the last user message and provide a response in ${currentLanguage.name}.
-Conversation History:
----
-${conversationHistory}
----
-Your task:
-1. Analyze the user's latest message to identify the dominant emotional sentiment (Rasa).
-2. Choose ONE Rasa from this list: ${Object.values(Rasa).filter(r => r !== Rasa.None).join(', ')}.
-3. Formulate a thoughtful, empathetic response in ${currentLanguage.name} in line with your detailed persona and response structure.
-4. Return ONLY a JSON object matching the required schema.`;
       
-      const systemInstruction = `Your Core Directive:
-You are Bandhan Mitra, a warm, friendly, and wise companion. Think of yourself as a kind friend who listens patiently and offers gentle guidance. Your goal is to help people feel heard, understand their feelings, and see their relationships in a new light.
-
-Your Personality:
-*   **Empathetic & Warm:** Always start by showing you understand and care. Use simple, comforting words.
-*   **Natural & Conversational:** Speak like a real person, not a textbook. Avoid jargon and complex sentences. Use a friendly, approachable tone.
-*   **Wise, not Academic:** You can share wisdom from Indian culture (like simple stories or analogies from the Vedas), but explain it in a very simple way that anyone can understand. The goal is to offer a new perspective, not to lecture.
-*   **Supportive, not a Doctor:** You are here to support, not to diagnose or solve problems. Never give medical advice. If someone is in danger, gently guide them to seek professional help.
-
-How to Talk to Users (Your Conversation Flow):
-1.  **Listen and Validate:** First, show you've heard them. Say things like, "It sounds like you're feeling..." or "That must be really tough, I'm here for you."
-2.  **Share a Simple Idea:** Gently offer a simple story or idea from Indian wisdom that relates to their situation. For example, you could talk about a relationship being like a garden that needs care from both people.
-3.  **Connect it to Them:** Briefly explain how that idea connects to what they're going through.
-4.  **Ask a Gentle Question:** End with an open-ended question to encourage them to share more. For example, "Can you tell me a little more about what that was like for you?" or "How did that make you feel at that moment?"
-
-The most important thing is to be a kind, understanding friend. Make the user feel safe and comfortable sharing.`;
-
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: { systemInstruction, responseMimeType: "application/json", responseSchema: schema },
+      const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              conversationHistory,
+              language: currentLanguage.name,
+          }),
       });
 
-      const parsedResponse = JSON.parse(response.text.trim());
+      if (!res.ok) {
+        const errorData = await res.json();
+        // Check for specific backend errors
+        if (res.status === 500 && errorData.error === 'Server configuration error.') {
+            throw new Error(t.errorApiKey);
+        } else if (res.status === 403) {
+            throw new Error(t.errorPermission);
+        }
+        throw new Error(errorData.error || `Server error: ${res.status}`);
+      }
+      
+      const parsedResponse = await res.json();
       const aiRasa = Object.values(Rasa).find(r => r === parsedResponse.rasa) || Rasa.Shanta;
       const aiMessage: ChatMessage = { id: `ai-${Date.now()}`, text: parsedResponse.response, sender: 'ai', rasa: aiRasa };
       setMessages(prev => [...prev, aiMessage]);
 
     } catch (err) {
       console.error("Error sending message:", err);
-      let errorMessageText = t.errorUnexpected;
-      if (err instanceof Error) {
-        if (err.message.toLowerCase().includes('permission denied') || err.message.toLowerCase().includes('api key not valid')) {
-          errorMessageText = t.errorPermission;
-        }
-      }
+      const errorMessageText = (err instanceof Error) ? err.message : t.errorUnexpected;
       setError(errorMessageText);
-      const errorMessage: ChatMessage = { id: `error-${Date.now()}`, text: t.errorConnection, sender: 'ai', rasa: Rasa.Karuna };
-      setMessages(prev => [...prev, errorMessage]);
+      // Don't add a duplicate error message if the error is API key related
+      if (errorMessageText !== t.errorApiKey && errorMessageText !== t.errorPermission) {
+          const errorMessage: ChatMessage = { id: `error-${Date.now()}`, text: t.errorConnection, sender: 'ai', rasa: Rasa.Karuna };
+          setMessages(prev => [...prev, errorMessage]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -372,7 +302,6 @@ The most important thing is to be a kind, understanding friend. Make the user fe
 
   return (
     <div className="bg-[#FFF8F0] text-[#4A2E2A] h-[100dvh] flex flex-col font-sans relative" style={{ backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3e%3cg fill-rule='evenodd'%3e%3cg id='hexagons' fill='%230d9488' fill-opacity='0.08' fill-rule='nonzero'%3e%3cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.99-7.5L26 15v18.5l-13 7.5L0 33.5V15z'/%3e%3c/g%3e%3c/g%3e%3c/svg%3e\")" }}>
-      <audio ref={audioRef} hidden />
       <header className="bg-gradient-to-r from-teal-500 to-teal-700 text-white p-4 shadow-md flex justify-between items-center relative z-10 shrink-0">
         <div className="w-16 md:hidden" />
         <div className="text-center">
@@ -442,10 +371,40 @@ The most important thing is to be a kind, understanding friend. Make the user fe
         </div>
       </main>
       <SupportModal isOpen={isSupportModalOpen} onClose={() => setIsSupportModalOpen(false)} t={t} />
-      {error && <ErrorToast message={error} onClose={() => setError(null)} />}
+      {error && error === t.errorApiKey && <ApiKeyError t={t} />}
+      {error && error !== t.errorApiKey && <ErrorToast message={error} onClose={() => setError(null)} />}
+       <audio 
+        ref={audioRef} 
+        onEnded={() => setCurrentlySpeaking(null)} 
+        onPause={() => setCurrentlySpeaking(null)}
+        onError={() => { setError(t.ttsError); setCurrentlySpeaking(null); }} 
+        style={{ display: 'none' }} 
+      />
     </div>
   );
 };
+
+const ApiKeyError: React.FC<{ t: (typeof TRANSLATIONS)['en'] }> = ({ t }) => (
+    <div className="absolute inset-0 bg-black/40 z-40 flex items-center justify-center p-4">
+         <div className="max-w-lg w-full bg-white/90 backdrop-blur-sm p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-200">
+          <h1 className="text-2xl font-bold text-red-600 font-serif">{t.errorApiKeyTitle}</h1>
+          <div className="text-left space-y-4 mt-4">
+             <p className="text-gray-800">
+              <CodeHighlight text={t.errorApiKeyMessage1} />
+            </p>
+            <p className="text-sm text-gray-600">
+              <CodeHighlight text={t.errorApiKeyMessage2} />
+            </p>
+            <p className="text-sm font-mono bg-gray-100 p-3 rounded border border-gray-200 text-center">
+              {t.errorApiKeyMessage3}
+            </p>
+            <p className="text-sm text-gray-600">
+              <CodeHighlight text={t.errorApiKeyMessage4} />
+            </p>
+          </div>
+        </div>
+    </div>
+);
 
 
 // --- CHILD COMPONENTS ---
