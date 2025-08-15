@@ -165,7 +165,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
 
   useEffect(() => {
@@ -195,16 +195,24 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  // Cleanup audio on component unmount
+  
+  // Setup audio player events
   useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = '';
-      }
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onEnded = () => setCurrentlySpeaking(null);
+    const onError = () => {
+        setError(t.ttsError);
+        setCurrentlySpeaking(null);
     };
-  }, []);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+    return () => {
+        audio.removeEventListener('ended', onEnded);
+        audio.removeEventListener('error', onError);
+    };
+  }, [t.ttsError]);
+
 
   // Setup Speech Recognition
   useEffect(() => {
@@ -241,65 +249,49 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLan
   };
   
   const handleSpeak = async (msg: ChatMessage) => {
-    // Stop any currently playing audio
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = ''; // Detach the source
-      audioRef.current = null;
-    }
-  
-    // If the user clicks the icon for the message that was playing, we just stop it.
+    const audio = audioRef.current;
+    if (!audio) return;
+
     if (currentlySpeaking === msg.id) {
-      setCurrentlySpeaking(null);
-      return;
+        audio.pause();
+        setCurrentlySpeaking(null);
+        return;
     }
-  
-    // Indicate that this message is now the one being spoken (or attempting to)
+
+    audio.pause();
     setCurrentlySpeaking(msg.id);
-  
+    setError(null);
+
     try {
-      const response = await fetch('/api/speech', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: msg.text,
-          voice: currentLanguage.googleVoice,
-        }),
-      });
-  
-      if (!response.ok) {
-        console.error('TTS API error:', await response.text());
-        throw new Error(`API error: ${response.statusText}`);
-      }
-  
-      const data = await response.json();
-      
-      if (data.audioContent) {
-        const audioSrc = `data:audio/mp3;base64,${data.audioContent}`;
-        const audio = new Audio(audioSrc);
-        audioRef.current = audio;
-  
-        audio.onended = () => {
-          setCurrentlySpeaking(null);
-          audioRef.current = null;
-        };
-  
-        audio.onerror = (e) => {
-          console.error("Audio playback error:", e);
-          setError(t.ttsError);
-          setCurrentlySpeaking(null);
-          audioRef.current = null;
-        };
-  
-        await audio.play();
-      } else {
-        throw new Error('No audio content in API response');
-      }
-  
-    } catch (err) {
-      console.error("Failed to fetch or play audio:", err);
-      setError(t.ttsError);
-      setCurrentlySpeaking(null); // Clear speaking state on error
+        const res = await fetch('/api/speech', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: msg.text,
+                voice: currentLanguage.googleVoice,
+            }),
+        });
+
+        if (!res.ok) {
+            throw new Error(`API request failed with status ${res.status}`);
+        }
+
+        const { audioContent } = await res.json();
+        if (!audioContent) {
+            throw new Error('No audio content received from API.');
+        }
+
+        audio.src = `data:audio/mp3;base64,${audioContent}`;
+        audio.play().catch(e => {
+            console.error("Audio playback error:", e);
+            setError(t.ttsError);
+            setCurrentlySpeaking(null);
+        });
+
+    } catch (error) {
+        console.error('Failed to get or play audio:', error);
+        setError(t.ttsError);
+        setCurrentlySpeaking(null);
     }
   };
 
@@ -380,6 +372,7 @@ The most important thing is to be a kind, understanding friend. Make the user fe
 
   return (
     <div className="bg-[#FFF8F0] text-[#4A2E2A] h-[100dvh] flex flex-col font-sans relative" style={{ backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3e%3cg fill-rule='evenodd'%3e%3cg id='hexagons' fill='%230d9488' fill-opacity='0.08' fill-rule='nonzero'%3e%3cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.99-7.5L26 15v18.5l-13 7.5L0 33.5V15z'/%3e%3c/g%3e%3c/g%3e%3c/svg%3e\")" }}>
+      <audio ref={audioRef} hidden />
       <header className="bg-gradient-to-r from-teal-500 to-teal-700 text-white p-4 shadow-md flex justify-between items-center relative z-10 shrink-0">
         <div className="w-16 md:hidden" />
         <div className="text-center">
