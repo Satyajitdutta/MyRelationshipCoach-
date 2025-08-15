@@ -64,13 +64,14 @@ const App: React.FC = () => {
 
 // --- LOGIN SCREEN ---
 const LoginScreen: React.FC<{onLogin: (username: string) => void, language: string}> = ({ onLogin, language }) => {
-  const [name, setName] = useState('');
   const t = TRANSLATIONS[language as keyof typeof TRANSLATIONS] || TRANSLATIONS.en;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onLogin(name);
   };
+
+  const [name, setName] = useState('');
 
   return (
     <div className="bg-[#FFF8F0] text-[#4A2E2A] h-screen flex flex-col justify-center items-center p-4" style={{ backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3e%3cg fill-rule='evenodd'%3e%3cg id='hexagons' fill='%230d9488' fill-opacity='0.08' fill-rule='nonzero'%3e%3cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.99-7.5L26 15v18.5l-13 7.5L0 33.5V15z'/%3e%3c/g%3e%3c/g%3e%3c/svg%3e\")" }}>
@@ -103,9 +104,52 @@ interface ChatScreenProps {
   language: string;
   onLanguageChange: (lang: string) => void;
 }
+
+const CodeHighlight: React.FC<{ text: string }> = ({ text }) => {
+  if (!text) return null;
+  const parts = text.split('`');
+  return (
+    <>
+      {parts.map((part, index) =>
+        index % 2 === 1 ? (
+          <code key={index} className="font-mono bg-gray-200 text-red-700 px-1 py-0.5 rounded text-sm">
+            {part}
+          </code>
+        ) : (
+          <span key={index}>{part}</span>
+        )
+      )}
+    </>
+  );
+};
+
 const ChatScreen: React.FC<ChatScreenProps> = ({ user, onLogout, language, onLanguageChange }) => {
   const t = useMemo(() => TRANSLATIONS[language as keyof typeof TRANSLATIONS] || TRANSLATIONS.en, [language]);
   const currentLanguage = useMemo(() => SUPPORTED_LANGUAGES.find(lang => lang.code === language) || SUPPORTED_LANGUAGES[0], [language]);
+
+  if (!API_KEY) {
+    return (
+      <div className="bg-[#FFF8F0] text-[#4A2E2A] h-[100dvh] flex flex-col items-center justify-center p-4 text-center" style={{ backgroundImage: "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3e%3cg fill-rule='evenodd'%3e%3cg id='hexagons' fill='%230d9488' fill-opacity='0.08' fill-rule='nonzero'%3e%3cpath d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9zM0 15l12.99-7.5L26 15v18.5l-13 7.5L0 33.5V15z'/%3e%3c/g%3e%3c/g%3e%3c/svg%3e\")" }}>
+        <div className="max-w-lg w-full bg-white/80 backdrop-blur-sm p-6 sm:p-8 rounded-2xl shadow-xl border border-gray-200">
+          <h1 className="text-2xl font-bold text-red-600 font-serif">{t.errorApiKeyTitle}</h1>
+          <div className="text-left space-y-4 mt-4">
+             <p className="text-gray-800">
+              <CodeHighlight text={t.errorApiKeyMessage1} />
+            </p>
+            <p className="text-sm text-gray-600">
+              <CodeHighlight text={t.errorApiKeyMessage2} />
+            </p>
+            <p className="text-sm font-mono bg-gray-100 p-3 rounded border border-gray-200 text-center">
+              {t.errorApiKeyMessage3}
+            </p>
+            <p className="text-sm text-gray-600">
+              <CodeHighlight text={t.errorApiKeyMessage4} />
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   const getWelcomeMessage = (): ChatMessage => ({ id: 'welcome-1', text: t.welcome, sender: 'ai', rasa: Rasa.Shanta });
   
@@ -461,7 +505,7 @@ const ErrorToast: React.FC<{ message: string; onClose: () => void }> = ({ messag
   <div className="absolute bottom-20 sm:bottom-4 left-1/2 -translate-x-1/2 w-11/12 max-w-md bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-r-lg shadow-lg flex items-start justify-between z-50" role="alert">
     <div className="flex items-center">
       <svg className="w-6 h-6 mr-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.21 3.03-1.742 3.03H4.42c-1.532 0-2.492-1.696-1.742-3.03l5.58-9.92zM10 13a1 1 0 110-2 1 1 0 010 2zm-1-4a1 1 0 011-1h.01a1 1 0 010 2H10a1 1 0 01-1-1z" clipRule="evenodd"></path></svg>
-      <p className="text-sm">{message}</p>
+      <p className="text-sm"><CodeHighlight text={message} /></p>
     </div>
     <button onClick={onClose} aria-label="Close error message" className="ml-4 -mt-1 -mr-1 p-1">
       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
